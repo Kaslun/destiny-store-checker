@@ -24,6 +24,19 @@ def _now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
+def refresh_tokens_raw(refresh_token: str) -> dict:
+    """Exchange a refresh token for a new token set (confidential client)."""
+    resp = requests.post(
+        TOKEN_URL,
+        headers={"Authorization": _basic_auth(), "X-API-Key": os.environ["BUNGIE_API_KEY"],
+                 "Content-Type": "application/x-www-form-urlencoded"},
+        data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_service_access_token(db) -> str:
     """Return a valid service-account access token, refreshing if expired."""
     row = db.table("system_credentials").select("*").eq("key", "service_account").single().execute().data
@@ -35,15 +48,7 @@ def get_service_access_token(db) -> str:
         return decrypt_token(row["access_token_enc"])
 
     # Refresh.
-    resp = requests.post(
-        TOKEN_URL,
-        headers={"Authorization": _basic_auth(), "X-API-Key": os.environ["BUNGIE_API_KEY"],
-                 "Content-Type": "application/x-www-form-urlencoded"},
-        data={"grant_type": "refresh_token", "refresh_token": decrypt_token(row["refresh_token_enc"])},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    t = resp.json()
+    t = refresh_tokens_raw(decrypt_token(row["refresh_token_enc"]))
     db.table("system_credentials").update({
         "access_token_enc": encrypt_token(t["access_token"]),
         "refresh_token_enc": encrypt_token(t["refresh_token"]),
