@@ -221,9 +221,6 @@ def main() -> int:
     from collections import Counter
     type_counts = Counter((detail.get(h, {}).get("item_type") or "(no type)") for h in hashes)
     print("item types in rotation:", dict(type_counts))
-    for h in hashes:
-        d = detail.get(h, {})
-        print(f"  - {d.get('name')} [{d.get('item_type') or '(no type)'}]")
 
     by_cur = {}
     for r in current_rows:

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { Category, RotationItem } from "@/lib/types";
 import { useOverlay } from "./OverlayProvider";
 import { RotationTabs } from "./RotationTabs";
@@ -11,36 +11,48 @@ import { ReconnectPrompt } from "./ReconnectPrompt";
 import { EmptyState } from "./EmptyState";
 
 export function StoreView({
-  rotation, hasCollectible, stale,
+  rotation, hasCollectible, stale, previousDate,
 }: {
   rotation: RotationItem[];
   hasCollectible: Record<number, boolean>;
   stale: { updatedAt: string | null };
+  previousDate: string | null;
 }) {
   const { auth, wishlist } = useOverlay();
   const [cat, setCat] = useState<string | "all">("all");
   const [cur, setCur] = useState<CurrencyChoice>("all");
 
+  // "Today's offers" = items that changed vs the previous snapshot day. Only
+  // meaningful once a prior day exists; until then we show everything.
+  const calibrated = previousDate !== null && rotation.some((r) => r.isNew);
+  const [view, setView] = useState<"today" | "all">("all");
+  useEffect(() => { if (calibrated) setView("today"); }, [calibrated]);
+
   const resetAt = rotation.find((r) => r.resetAt)?.resetAt ?? null;
   const names = Object.fromEntries(rotation.map((r) => [r.itemHash, r.name]));
   const liveHashes = rotation.map((r) => r.itemHash);
 
-  // Tabs are the item types present in the rotation (Shader, Transmat Effect,
-  // Ghost Shell, ...), ordered by how many items each has then alphabetically.
+  // The list the current view operates on.
+  const base = useMemo(
+    () => (view === "today" && calibrated ? rotation.filter((r) => r.isNew) : rotation),
+    [rotation, view, calibrated]
+  );
+
+  // Tabs are the item types present in the current view, by count then name.
   const tabs: Category[] = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const r of rotation) {
+    for (const r of base) {
       if (r.categoryId) counts.set(r.categoryId, (counts.get(r.categoryId) ?? 0) + 1);
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([id], i) => ({ id, parentId: null, name: id, sortOrder: i }));
-  }, [rotation]);
+  }, [base]);
 
   const shown = useMemo(
-    () => rotation.filter((r) =>
+    () => base.filter((r) =>
       (cat === "all" || r.categoryId === cat) && matchesCurrency(cur, r.currencyType)),
-    [rotation, cat, cur]
+    [base, cat, cur]
   );
 
   return (
@@ -50,12 +62,24 @@ export function StoreView({
       <LiveBanner liveHashes={liveHashes} names={names} />
 
       <div className="bar">
+        {calibrated && (
+          <div className="seg" role="group" aria-label="View">
+            <button aria-pressed={view === "today"} onClick={() => setView("today")}>Today&apos;s offers</button>
+            <button aria-pressed={view === "all"} onClick={() => setView("all")}>All items</button>
+          </div>
+        )}
         <RotationTabs categories={tabs} active={cat} onChange={setCat} />
         <span className="spacer" style={{ flex: 1 }} />
         <CurrencyFilter value={cur} onChange={setCur} />
         <ResetCountdown resetAt={resetAt} />
       </div>
 
+      {!calibrated && (
+        <p className="dim" style={{ fontSize: "0.8rem", marginTop: 0 }}>
+          Showing everything Tess sells today. The daily-offer view turns on after the next reset,
+          once there&apos;s a previous day to compare against.
+        </p>
+      )}
       {stale.updatedAt && (
         <p className="dim" style={{ fontSize: "0.8rem", marginTop: 0 }}>
           Last updated {new Date(stale.updatedAt).toLocaleString()}.

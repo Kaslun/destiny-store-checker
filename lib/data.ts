@@ -6,28 +6,58 @@ function asCurrency(v: string | null): CurrencyType {
   return v === "bright_dust" || v === "silver" ? v : "other";
 }
 
-export async function getRotation(): Promise<RotationItem[]> {
+export async function getRotation(): Promise<{ items: RotationItem[]; previousDate: string | null }> {
   const db = publicSupabase();
   const { data } = await db
     .from("current_rotation")
     .select("item_hash, currency_type, cost_amount, sale_status, reset_at, catalog_items(name, icon_url, item_type)")
     .order("item_hash", { ascending: true });
-  return (data ?? []).map((r): RotationItem => {
+
+  // Day-over-day diff: an item is "new today" if it was absent from the previous
+  // snapshot day, or its cost changed. The permanent catalog repeats daily and so
+  // is never flagged. Needs >= 2 distinct snapshot days to mean anything.
+  const { data: latest } = await db
+    .from("rotation_snapshots").select("snapshot_date")
+    .order("snapshot_date", { ascending: false }).limit(1);
+  const today = latest?.[0]?.snapshot_date ?? null;
+  let previousDate: string | null = null;
+  const prevHashes = new Set<number>();
+  const prevCost = new Map<number, number | null>();
+  if (today) {
+    const { data: pr } = await db
+      .from("rotation_snapshots").select("snapshot_date")
+      .lt("snapshot_date", today).order("snapshot_date", { ascending: false }).limit(1);
+    previousDate = pr?.[0]?.snapshot_date ?? null;
+    if (previousDate) {
+      const { data: prevRows } = await db
+        .from("rotation_snapshots").select("item_hash, cost_amount")
+        .eq("snapshot_date", previousDate);
+      for (const r of prevRows ?? []) {
+        prevHashes.add(Number(r.item_hash));
+        prevCost.set(Number(r.item_hash), r.cost_amount);
+      }
+    }
+  }
+
+  const items = (data ?? []).map((r): RotationItem => {
     const item = (r.catalog_items ?? {}) as { name?: string; icon_url?: string | null; item_type?: string | null };
     const itemType = item.item_type ?? null;
+    const hash = Number(r.item_hash);
+    const isNew = previousDate ? (!prevHashes.has(hash) || prevCost.get(hash) !== r.cost_amount) : false;
     return {
-      itemHash: Number(r.item_hash),
+      itemHash: hash,
       name: item.name ?? `Item ${r.item_hash}`,
       iconUrl: bungieImg(item.icon_url ?? null),
       currencyType: asCurrency(r.currency_type),
       costAmount: r.cost_amount,
       saleStatus: r.sale_status ?? "available",
       itemType,
-      // Group the store by item type ("Shader", "Transmat Effect", ...).
       categoryId: itemType,
       resetAt: r.reset_at,
+      isNew,
     };
   });
+  return { items, previousDate };
 }
 
 export async function getCategories(): Promise<Category[]> {

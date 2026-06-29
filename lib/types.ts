@@ -24,6 +24,7 @@ export type RotationItem = {
   itemType: string | null;
   categoryId: string | null;
   resetAt: string | null;
+  isNew: boolean;   // changed vs the previous rotation day
 };
 
 export type Category = { id: string; parentId: string | null; name: string; sortOrder: number };
