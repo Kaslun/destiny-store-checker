@@ -9,10 +9,17 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 def _key() -> bytes:
-    raw = os.environ["TOKEN_ENC_KEY"]
+    # Be lenient like Node's Buffer.from(x, "base64"): strip whitespace and
+    # restore missing "=" padding, so a stray newline or dropped "=" in the
+    # secret doesn't break decoding.
+    raw = os.environ["TOKEN_ENC_KEY"].strip()
+    raw += "=" * (-len(raw) % 4)
     key = base64.b64decode(raw)
     if len(key) != 32:
-        raise ValueError("TOKEN_ENC_KEY must decode to 32 bytes")
+        raise ValueError(
+            f"TOKEN_ENC_KEY must decode to 32 bytes, got {len(key)}. "
+            "Check it matches the value set in Vercel exactly."
+        )
     return key
 
 
