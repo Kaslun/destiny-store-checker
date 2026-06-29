@@ -32,8 +32,9 @@ def main() -> int:
     sales = (resp.get("sales") or {}).get("data") or {}
     print(f"{len(vendors)} vendors visible to the character; bright_dust_hash={bright_dust}")
 
-    daily_store = []   # vendors whose categories look like the in-game daily offers
+    daily_store = []        # vendors whose categories look like daily offers
     bright_dust_vendors = []
+    eververse_named = []    # the actual Eververse store: Tess Everis
 
     for vh in vendors:
         sale_items = (sales.get(vh) or {}).get("saleItems") or {}
@@ -59,24 +60,32 @@ def main() -> int:
                     cat_names.append(f"{nm}({len(c.get('itemIndexes') or [])})")
 
         # Only print likely Eververse candidates to keep the log focused.
+        nlow = name.lower()
         cat_blob = " ".join(cat_names).lower()
         is_daily = ("offer" in cat_blob) or ("bright dust" in cat_blob)
+        # The daily Eververse store is the vendor named Tess Everis / Eververse
+        # that sells for Bright Dust. NOT the Archive (old cosmetics) or the
+        # engram-focusing vendor, which also take Bright Dust.
+        is_eververse = sells_bd and ("tess everis" in nlow or "eververse" in nlow)
         if sells_bd:
             bright_dust_vendors.append(int(vh))
         if is_daily and sells_bd:
             daily_store.append(int(vh))
-        if sells_bd or is_daily or any(k in name.lower() for k in ("tess", "eververse", "bright", "monument", "store")):
-            print(f"VENDOR {vh} '{name}' sales={n} sells_bright_dust={sells_bd} daily={is_daily}")
+        if is_eververse:
+            eververse_named.append(int(vh))
+        if sells_bd or is_daily or any(k in nlow for k in ("tess", "eververse", "bright", "monument", "store")):
+            print(f"VENDOR {vh} '{name}' sales={n} sells_bright_dust={sells_bd} "
+                  f"daily={is_daily} eververse={is_eververse}")
             print(f"    categories: {cat_names}")
 
-    chosen = daily_store or bright_dust_vendors
+    chosen = eververse_named or daily_store
+    why = "Tess Everis / Eververse" if eververse_named else "daily-offer categories"
     if chosen:
         db.table("config").upsert({"key": "eververse_vendor_hashes", "value": chosen}).execute()
-        print(f"\nWrote eververse_vendor_hashes = {chosen} "
-              f"({'daily-store match' if daily_store else 'bright-dust fallback'}). "
-              "Run poll-rotation next.")
+        print(f"\nWrote eververse_vendor_hashes = {chosen} ({why}). Run poll-rotation next.")
     else:
-        print("\nNo Eververse/daily vendor identified. Paste the VENDOR lines above.")
+        print("\nNo Eververse store vendor identified by name. Bright-dust vendors "
+              f"were: {bright_dust_vendors}. Paste the VENDOR lines above.")
     return 0
 
 
