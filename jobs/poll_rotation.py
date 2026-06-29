@@ -24,6 +24,16 @@ def get_config(db, key, default=None):
 
 
 def main() -> int:
+    # Fail fast with a clear message if the service-account identity is unset,
+    # rather than building a malformed URL and getting a confusing 404.
+    missing = [n for n in ("SERVICE_MEMBERSHIP_TYPE", "SERVICE_MEMBERSHIP_ID", "SERVICE_CHARACTER_ID")
+               if not os.environ.get(n)]
+    if missing:
+        print(f"Missing required secrets: {', '.join(missing)}. "
+              "Add them as repository secrets (values from the seed-service-account log).",
+              file=sys.stderr)
+        return 1
+
     db = admin_client()
     token = get_service_access_token(db)
 
