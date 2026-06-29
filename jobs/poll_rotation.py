@@ -88,32 +88,39 @@ def main() -> int:
     snapshot_rows = []
     category_rows = {}   # id -> catalog_categories row (deduped)
 
-    print(f"trying {len(vendor_hashes)} resolved Eververse vendor(s): {vendor_hashes}")
+    print(f"polling {len(vendor_hashes)} Eververse vendor(s): {vendor_hashes}")
+
+    # One GetVendors (plural) call returns every vendor the character can see,
+    # with components keyed by vendorHash. The plural endpoint works for vendors
+    # that 1601 on the singular GetVendor, so we read the configured vendors out
+    # of this single response.
+    allv = api_get(
+        f"/Destiny2/{SERVICE_MEMBERSHIP_TYPE}/Profile/{SERVICE_MEMBERSHIP_ID}"
+        f"/Character/{SERVICE_CHARACTER_ID}/Vendors/?components=400,401,402",
+        token,
+    )
+    all_vendors = (allv.get("vendors") or {}).get("data") or {}
+    all_categories = (allv.get("categories") or {}).get("data") or {}
+    all_sales = (allv.get("sales") or {}).get("data") or {}
+
     ok_vendors = 0
     for vendor_hash in vendor_hashes:
-        path = (f"/Destiny2/{SERVICE_MEMBERSHIP_TYPE}/Profile/{SERVICE_MEMBERSHIP_ID}"
-                f"/Character/{SERVICE_CHARACTER_ID}/Vendors/{vendor_hash}/?components=400,401,402")
-        try:
-            resp = api_get(path, token)
-        except RuntimeError as e:
-            # Not every name-matched vendor is queryable (display/category or
-            # inactive seasonal vendors). Skip and keep going.
-            print(f"  vendor {vendor_hash}: skipped ({e})")
+        vh = str(vendor_hash)
+        if vh not in all_sales and vh not in all_vendors:
+            print(f"  vendor {vendor_hash}: not visible to the character; skipped")
             continue
-
-        sales = (resp.get("sales") or {}).get("data") or {}
-        vendor = (resp.get("vendor") or {}).get("data") or {}
+        sales = (all_sales.get(vh) or {}).get("saleItems") or {}
+        vendor = all_vendors.get(vh) or {}
         reset_at = vendor.get("nextRefreshDate")
 
-        # Eververse is organized into display categories (Featured, Bright Dust,
-        # Shaders, Finishers, Transmat Effects, ...). Their names live in the
-        # vendor definition; component 401 maps each category to vendorItemIndexes.
+        # Display category names live in the vendor definition; component 401
+        # maps each category to vendorItemIndexes.
         try:
             vdef = api_get(f"/Destiny2/Manifest/DestinyVendorDefinition/{vendor_hash}/", token)
         except RuntimeError:
             vdef = {}
         display_categories = vdef.get("displayCategories") or []
-        live_categories = ((resp.get("categories") or {}).get("data") or {}).get("categories") or []
+        live_categories = (all_categories.get(vh) or {}).get("categories") or []
         index_to_cat = {}
         for c in live_categories:
             di = c.get("displayCategoryIndex")
@@ -122,7 +129,7 @@ def main() -> int:
             dc = display_categories[di] or {}
             name = ((dc.get("displayProperties") or {}).get("name") or "").strip()
             if not name:
-                continue  # skip unnamed/structural dividers
+                continue
             cat_id = f"{vendor_hash}:{di}"
             category_rows[cat_id] = {
                 "id": cat_id, "parent_id": None, "name": name,
@@ -133,7 +140,7 @@ def main() -> int:
 
         ok_vendors += 1
         print(f"  vendor {vendor_hash}: {len(sales)} sale items, "
-              f"{len(category_rows)} categories, {len(index_to_cat)} categorized indexes")
+              f"{len(live_categories)} categories")
 
         for idx_str, sale in sales.items():
             try:
