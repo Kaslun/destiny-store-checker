@@ -125,6 +125,14 @@ def main() -> int:
                 "sale_status": sale_status, "raw": sale,
             })
 
+    # A vendor can list the same item in multiple sale slots. Dedupe before
+    # writing: current_rotation by (vendor, item), snapshots by their unique key,
+    # else the batched upserts hit the same row twice (Postgres 21000).
+    cur_by_key = {(r["vendor_hash"], r["item_hash"]): r for r in current_rows}
+    current_rows = list(cur_by_key.values())
+    snap_by_key = {(r["snapshot_date"], r["vendor_hash"], r["item_hash"]): r for r in snapshot_rows}
+    snapshot_rows = list(snap_by_key.values())
+
     # Ensure FK targets exist before inserting current_rotation.
     ensure_catalog_items(db, token, [r["item_hash"] for r in current_rows])
 
