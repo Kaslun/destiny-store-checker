@@ -1,0 +1,23 @@
+name: inspect-tess
+on:
+  workflow_dispatch: {}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r jobs/requirements.txt
+      - working-directory: jobs
+        run: python inspect_tess.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUNGIE_API_KEY: ${{ secrets.BUNGIE_API_KEY }}
+          BUNGIE_CLIENT_ID: ${{ secrets.BUNGIE_CLIENT_ID }}
+          BUNGIE_CLIENT_SECRET: ${{ secrets.BUNGIE_CLIENT_SECRET }}
+          TOKEN_ENC_KEY: ${{ secrets.TOKEN_ENC_KEY }}
+          SERVICE_MEMBERSHIP_TYPE: ${{ secrets.SERVICE_MEMBERSHIP_TYPE }}
+          SERVICE_MEMBERSHIP_ID: ${{ secrets.SERVICE_MEMBERSHIP_ID }}
+          SERVICE_CHARACTER_ID: ${{ secrets.SERVICE_CHARACTER_ID }}
