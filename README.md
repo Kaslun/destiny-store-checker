@@ -49,6 +49,8 @@ tests/                  crypto roundtrip · notify dispatch dedupe
 5. Authorize a **service account** once and store its encrypted refresh token in `system_credentials` (key `service_account`). The poll job uses it.
 6. `npm run dev`
 
+For hosting on Vercel, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## Scripts
 
 - `npm run dev` / `build` / `start`

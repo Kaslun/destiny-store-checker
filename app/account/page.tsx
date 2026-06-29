@@ -8,7 +8,12 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  // Build on an explicit ArrayBuffer so the result is Uint8Array<ArrayBuffer>,
+  // which pushManager.subscribe requires under TS 5.7+ DOM types.
+  const buffer = new ArrayBuffer(raw.length);
+  const arr = new Uint8Array(buffer);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
 }
 
 export default function AccountPage() {
@@ -51,7 +56,7 @@ export default function AccountPage() {
     const reg = await navigator.serviceWorker.register("/sw.js");
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapid),
+      applicationServerKey: urlBase64ToUint8Array(vapid) as BufferSource,
     });
     await fetch("/api/notifications/webpush/subscribe", {
       method: "POST", headers: { "Content-Type": "application/json" },

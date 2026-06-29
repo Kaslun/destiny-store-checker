@@ -3,12 +3,23 @@ const nextConfig = {
   reactStrictMode: true,
   images: {
     // Bungie serves item icons/screenshots from absolute URLs on this host.
-    remotePatterns: [
-      { protocol: "https", hostname: "www.bungie.net" },
-    ],
+    remotePatterns: [{ protocol: "https", hostname: "www.bungie.net" }],
   },
-  // Belt-and-braces: the bundle grep in scripts/check-client-bundle.mjs is the
-  // real gate, but documenting intent here too.
-  experimental: {},
+  poweredByHeader: false,
+  // Security headers (doc 06). Applied at the Vercel edge for every response.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
 };
 export default nextConfig;
