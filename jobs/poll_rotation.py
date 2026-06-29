@@ -86,6 +86,7 @@ def main() -> int:
     today = dt.datetime.now(dt.timezone.utc).date().isoformat()
     current_rows = []
     snapshot_rows = []
+    category_rows = {}   # id -> catalog_categories row (deduped)
 
     print(f"trying {len(vendor_hashes)} resolved Eververse vendor(s): {vendor_hashes}")
     ok_vendors = 0
@@ -99,13 +100,47 @@ def main() -> int:
             # inactive seasonal vendors). Skip and keep going.
             print(f"  vendor {vendor_hash}: skipped ({e})")
             continue
+
         sales = (resp.get("sales") or {}).get("data") or {}
         vendor = (resp.get("vendor") or {}).get("data") or {}
         reset_at = vendor.get("nextRefreshDate")
-        ok_vendors += 1
-        print(f"  vendor {vendor_hash}: {len(sales)} sale items")
 
-        for _idx, sale in sales.items():
+        # Eververse is organized into display categories (Featured, Bright Dust,
+        # Shaders, Finishers, Transmat Effects, ...). Their names live in the
+        # vendor definition; component 401 maps each category to vendorItemIndexes.
+        try:
+            vdef = api_get(f"/Destiny2/Manifest/DestinyVendorDefinition/{vendor_hash}/", token)
+        except RuntimeError:
+            vdef = {}
+        display_categories = vdef.get("displayCategories") or []
+        live_categories = ((resp.get("categories") or {}).get("data") or {}).get("categories") or []
+        index_to_cat = {}
+        for c in live_categories:
+            di = c.get("displayCategoryIndex")
+            if di is None or di >= len(display_categories):
+                continue
+            dc = display_categories[di] or {}
+            name = ((dc.get("displayProperties") or {}).get("name") or "").strip()
+            if not name:
+                continue  # skip unnamed/structural dividers
+            cat_id = f"{vendor_hash}:{di}"
+            category_rows[cat_id] = {
+                "id": cat_id, "parent_id": None, "name": name,
+                "sort_order": di, "source": "vendor_category",
+            }
+            for idx in c.get("itemIndexes") or []:
+                index_to_cat[idx] = cat_id
+
+        ok_vendors += 1
+        print(f"  vendor {vendor_hash}: {len(sales)} sale items, "
+              f"{len(category_rows)} categories, {len(index_to_cat)} categorized indexes")
+
+        for idx_str, sale in sales.items():
+            try:
+                idx = int(idx_str)
+            except (TypeError, ValueError):
+                idx = sale.get("vendorItemIndex")
+            category_id = index_to_cat.get(idx)
             item_hash = sale.get("itemHash")
             costs = sale.get("costs") or []
             cost = costs[0] if costs else {}
@@ -114,7 +149,7 @@ def main() -> int:
                         else "silver" if cost_hash else "other")
             sale_status = {0: "available", 1: "sold_out"}.get(sale.get("saleStatus"), "available")
             current_rows.append({
-                "vendor_hash": vendor_hash, "item_hash": item_hash, "category_id": None,
+                "vendor_hash": vendor_hash, "item_hash": item_hash, "category_id": category_id,
                 "currency_type": currency, "cost_currency_hash": cost_hash,
                 "cost_amount": cost.get("quantity"), "sale_status": sale_status,
                 "quantity": sale.get("quantity"), "reset_at": reset_at,
@@ -125,13 +160,30 @@ def main() -> int:
                 "sale_status": sale_status, "raw": sale,
             })
 
+    # Keep only items shown in a store category (that is what a player sees in
+    # Eververse). Fallback: if category mapping resolved nothing, keep everything
+    # so we never blank the store on an unexpected manifest shape.
+    categorized = [r for r in current_rows if r["category_id"] is not None]
+    if categorized:
+        kept = {(r["vendor_hash"], r["item_hash"]) for r in categorized}
+        dropped = len(current_rows) - len(categorized)
+        current_rows = categorized
+        snapshot_rows = [r for r in snapshot_rows if (r["vendor_hash"], r["item_hash"]) in kept]
+        if dropped:
+            print(f"  ({dropped} uncategorized sale entries skipped)")
+    else:
+        print("  (no category mapping resolved; keeping all sale items as fallback)")
+
     # A vendor can list the same item in multiple sale slots. Dedupe before
-    # writing: current_rotation by (vendor, item), snapshots by their unique key,
-    # else the batched upserts hit the same row twice (Postgres 21000).
+    # writing, else the batched upserts hit the same row twice (Postgres 21000).
     cur_by_key = {(r["vendor_hash"], r["item_hash"]): r for r in current_rows}
     current_rows = list(cur_by_key.values())
     snap_by_key = {(r["snapshot_date"], r["vendor_hash"], r["item_hash"]): r for r in snapshot_rows}
     snapshot_rows = list(snap_by_key.values())
+
+    # Upsert the store categories so the frontend tabs match Eververse's sections.
+    if category_rows:
+        db.table("catalog_categories").upsert(list(category_rows.values())).execute()
 
     # Ensure FK targets exist before inserting current_rotation.
     ensure_catalog_items(db, token, [r["item_hash"] for r in current_rows])
@@ -151,7 +203,11 @@ def main() -> int:
         print("No Eververse vendor was queryable. The resolved hashes may all be "
               "non-interactable vendors; widen/repair resolution in manifest_ingest.", file=sys.stderr)
         return 1
-    print(f"polled {len(current_rows)} sale items across {ok_vendors}/{len(vendor_hashes)} vendors")
+    by_cur = {}
+    for r in current_rows:
+        by_cur[r["currency_type"]] = by_cur.get(r["currency_type"], 0) + 1
+    print(f"polled {len(current_rows)} items across {ok_vendors}/{len(vendor_hashes)} vendors; "
+          f"by currency: {by_cur}; {len(category_rows)} categories")
     return 0
 
 

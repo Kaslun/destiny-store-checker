@@ -1,10 +1,10 @@
 name: poll-rotation
 on:
   schedule:
-    # A couple of runs in the post-reset window. Daily ~17:00 UTC; weekly Tue.
-    # Do not poll continuously. Verify exact reset time, don't trust forever.
-    - cron: "5,20 17 * * *"
-    - cron: "5,20 17 * * 2"   # extra weekly-reset coverage (Tuesday)
+    # Eververse now rotates EVERY day at the daily reset (~17:00 UTC), so poll
+    # daily a few minutes after reset. Two runs give a retry if the first is
+    # early. Do not poll continuously; verify the exact reset time over time.
+    - cron: "5,25 17 * * *"
   workflow_dispatch: {}
 jobs:
   poll:

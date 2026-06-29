@@ -67,4 +67,4 @@ Public tables (`catalog_*`, `current_rotation`, `rotation_snapshots`) allow anon
 
 - Unofficial companion tool. Not affiliated with or endorsed by Bungie. Item data and imagery are Bungie's.
 - The Python jobs and the manifest hash resolution are faithful skeletons: Eververse vendor hashes, Bright Dust hash, and the presentation-node roots are resolved by name at ingest time, never hardcoded. The presentation-node subtree walk (doc 01 §5.4) is a documented TODO in `manifest_ingest.py`.
-- Reset cron times (~17:00 UTC daily, Tuesday weekly) should be verified against current Bungie timing rather than trusted indefinitely.
+- Eververse rotates every day at the daily reset (~17:00 UTC); the poll cron runs daily. Verify the exact reset time against current Bungie timing rather than trusting it indefinitely.
