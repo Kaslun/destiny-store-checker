@@ -28,7 +28,9 @@ def set_config(db, key, value):
 
 
 def fetch_table(base_url, paths, table_name):
-    url = f"https://www.bungie.net{paths[table_name][EN]}"
+    # jsonWorldComponentContentPaths is nested language-first, then table:
+    #   paths[EN][table_name] -> "/common/destiny2_content/json/en/...json"
+    url = f"https://www.bungie.net{paths[EN][table_name]}"
     return requests.get(url, timeout=300).json()
 
 
