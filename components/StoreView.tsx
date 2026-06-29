@@ -11,10 +11,9 @@ import { ReconnectPrompt } from "./ReconnectPrompt";
 import { EmptyState } from "./EmptyState";
 
 export function StoreView({
-  rotation, categories, hasCollectible, stale,
+  rotation, hasCollectible, stale,
 }: {
   rotation: RotationItem[];
-  categories: Category[];
   hasCollectible: Record<number, boolean>;
   stale: { updatedAt: string | null };
 }) {
@@ -26,9 +25,17 @@ export function StoreView({
   const names = Object.fromEntries(rotation.map((r) => [r.itemHash, r.name]));
   const liveHashes = rotation.map((r) => r.itemHash);
 
-  // Tabs come from categories actually present in the rotation (data-driven).
-  const presentCatIds = new Set(rotation.map((r) => r.categoryId).filter(Boolean) as string[]);
-  const tabs = categories.filter((c) => presentCatIds.has(c.id));
+  // Tabs are the item types present in the rotation (Shader, Transmat Effect,
+  // Ghost Shell, ...), ordered by how many items each has then alphabetically.
+  const tabs: Category[] = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of rotation) {
+      if (r.categoryId) counts.set(r.categoryId, (counts.get(r.categoryId) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([id], i) => ({ id, parentId: null, name: id, sortOrder: i }));
+  }, [rotation]);
 
   const shown = useMemo(
     () => rotation.filter((r) =>

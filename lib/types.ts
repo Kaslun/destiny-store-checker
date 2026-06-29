@@ -21,6 +21,7 @@ export type RotationItem = {
   currencyType: CurrencyType;
   costAmount: number | null;
   saleStatus: string;
+  itemType: string | null;
   categoryId: string | null;
   resetAt: string | null;
 };

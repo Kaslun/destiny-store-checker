@@ -10,10 +10,11 @@ export async function getRotation(): Promise<RotationItem[]> {
   const db = publicSupabase();
   const { data } = await db
     .from("current_rotation")
-    .select("item_hash, currency_type, cost_amount, sale_status, category_id, reset_at, catalog_items(name, icon_url)")
-    .order("category_id", { ascending: true });
+    .select("item_hash, currency_type, cost_amount, sale_status, reset_at, catalog_items(name, icon_url, item_type)")
+    .order("item_hash", { ascending: true });
   return (data ?? []).map((r): RotationItem => {
-    const item = (r.catalog_items ?? {}) as { name?: string; icon_url?: string | null };
+    const item = (r.catalog_items ?? {}) as { name?: string; icon_url?: string | null; item_type?: string | null };
+    const itemType = item.item_type ?? null;
     return {
       itemHash: Number(r.item_hash),
       name: item.name ?? `Item ${r.item_hash}`,
@@ -21,7 +22,9 @@ export async function getRotation(): Promise<RotationItem[]> {
       currencyType: asCurrency(r.currency_type),
       costAmount: r.cost_amount,
       saleStatus: r.sale_status ?? "available",
-      categoryId: r.category_id,
+      itemType,
+      // Group the store by item type ("Shader", "Transmat Effect", ...).
+      categoryId: itemType,
       resetAt: r.reset_at,
     };
   });
