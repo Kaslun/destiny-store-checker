@@ -23,6 +23,46 @@ def get_config(db, key, default=None):
     return row[0]["value"] if row else default
 
 
+def ensure_catalog_items(db, token, item_hashes):
+    """Make sure every sale item exists in catalog_items (current_rotation has an
+    FK to it). The manifest ingest only flags collectible-sourced Eververse items,
+    but the live rotation sells more, so backfill any missing ones by fetching
+    their definition. Self-correcting: the catalog grows from real rotations."""
+    hashes = sorted({h for h in item_hashes if h})
+    if not hashes:
+        return
+    existing = set()
+    for i in range(0, len(hashes), 200):
+        chunk = hashes[i:i + 200]
+        rows = db.table("catalog_items").select("item_hash").in_("item_hash", chunk).execute().data
+        existing.update(int(r["item_hash"]) for r in rows)
+    missing = [h for h in hashes if h not in existing]
+    if not missing:
+        return
+    print(f"  backfilling {len(missing)} catalog item(s) referenced by the rotation")
+    upserts = []
+    for h in missing:
+        try:
+            d = api_get(f"/Destiny2/Manifest/DestinyInventoryItemDefinition/{h}/", token)
+        except RuntimeError as e:
+            print(f"    item {h}: definition fetch failed ({e})")
+            continue
+        dp = d.get("displayProperties") or {}
+        upserts.append({
+            "item_hash": h,
+            "name": dp.get("name") or f"Item {h}",
+            "description": dp.get("description"),
+            "icon_url": dp.get("icon"),
+            "screenshot_url": d.get("screenshot"),
+            "item_type": d.get("itemTypeDisplayName"),
+            "item_subtype": str(d.get("itemSubType")),
+            "collectible_hash": d.get("collectibleHash"),
+            "is_eververse": True,
+        })
+    for i in range(0, len(upserts), 500):
+        db.table("catalog_items").upsert(upserts[i:i + 500]).execute()
+
+
 def main() -> int:
     # Fail fast with a clear message if the service-account identity is unset,
     # rather than building a malformed URL and getting a confusing 404.
@@ -84,6 +124,9 @@ def main() -> int:
                 "currency_type": currency, "cost_amount": cost.get("quantity"),
                 "sale_status": sale_status, "raw": sale,
             })
+
+    # Ensure FK targets exist before inserting current_rotation.
+    ensure_catalog_items(db, token, [r["item_hash"] for r in current_rows])
 
     # Replace current_rotation atomically-ish: clear then insert.
     db.table("current_rotation").delete().neq("id", -1).execute()
