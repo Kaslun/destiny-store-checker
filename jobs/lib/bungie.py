@@ -65,10 +65,18 @@ def api_get(path: str, access_token: str) -> dict:
         headers={"X-API-Key": os.environ["BUNGIE_API_KEY"], "Authorization": f"Bearer {access_token}"},
         timeout=60,
     )
+    # Bungie returns its real error in the JSON body even on HTTP 500; surface it.
+    try:
+        data = resp.json()
+    except ValueError:
+        resp.raise_for_status()
+        raise
+    if isinstance(data, dict) and data.get("ErrorCode", 1) != 1:
+        raise RuntimeError(
+            f"Bungie API error {data.get('ErrorCode')} ({data.get('ErrorStatus')}): "
+            f"{data.get('Message')} for {path}"
+        )
     resp.raise_for_status()
-    data = resp.json()
-    if data.get("ErrorCode", 1) != 1:
-        raise RuntimeError(f"Bungie API error {data.get('ErrorCode')}: {data.get('Message')}")
     return data["Response"]
 
 

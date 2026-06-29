@@ -76,9 +76,35 @@ def main() -> int:
 
     token = valid_access_token(db, acct)
 
+    # The stored bungie_membership_id is the Bungie.net id, not the Destiny
+    # platform membershipId that GetProfile/GetVendor need. Resolve the real
+    # Destiny membership live and pick the cross-save primary.
+    memberships = api_get("/User/GetMembershipsForCurrentUser/", token)
+    destiny_list = memberships.get("destinyMemberships", []) or []
+    if not destiny_list:
+        print("No Destiny memberships on this account.", file=sys.stderr)
+        return 1
+    primary = memberships.get("primaryMembershipId")
+    chosen = next((d for d in destiny_list if d.get("membershipId") == primary), None)
+    if chosen is None:
+        chosen = next(
+            (d for d in destiny_list
+             if d.get("crossSaveOverride", 0) in (0, d.get("membershipType"))),
+            destiny_list[0],
+        )
+    mtype = chosen["membershipType"]
+    mid = chosen["membershipId"]
+    print(f"Destiny membership: type={mtype} id={mid}")
+
+    # Backfill the column so the web app's collectibles/currency calls work too.
+    # Non-fatal: if migration 0004 hasn't run yet, seeding still completes.
+    try:
+        db.table("users").update({"destiny_membership_id": mid, "membership_type": mtype}) \
+            .eq("id", user["id"]).execute()
+    except Exception as e:
+        print(f"(skipped destiny_membership_id backfill: {e})")
+
     # Resolve a character id (components=200 -> characters.data keyed by id).
-    mtype = user["membership_type"]
-    mid = user["bungie_membership_id"]
     profile = api_get(f"/Destiny2/{mtype}/Profile/{mid}/?components=200", token)
     characters = (profile.get("characters") or {}).get("data") or {}
     if not characters:

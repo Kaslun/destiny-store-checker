@@ -33,6 +33,7 @@ export async function GET(req: Request) {
     .upsert(
       {
         bungie_membership_id: tokens.membership_id,
+        destiny_membership_id: destiny?.membershipId ?? null,
         membership_type: destiny?.membershipType ?? null,
         display_name: displayName,
       },

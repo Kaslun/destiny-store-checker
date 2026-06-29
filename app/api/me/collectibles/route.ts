@@ -22,14 +22,15 @@ export async function GET() {
     const db = adminSupabase();
     const { data: user } = await db
       .from("users")
-      .select("membership_type, bungie_membership_id")
+      .select("membership_type, bungie_membership_id, destiny_membership_id")
       .eq("id", session.user_id)
       .single();
     if (!user) return unauthenticated();
+    const destinyId = (user.destiny_membership_id ?? user.bungie_membership_id) as string;
     const overlay = await computeOverlay(
       token,
       user.membership_type as number,
-      user.bungie_membership_id as string
+      destinyId
     );
     cache.set(session.user_id, { at: Date.now(), data: overlay });
     return json(overlay);

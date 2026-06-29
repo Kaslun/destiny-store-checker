@@ -17,14 +17,15 @@ export async function GET() {
     const token = await getValidAccessToken(session.user_id);
     const db = adminSupabase();
     const [{ data: user }, { data: cfg }] = await Promise.all([
-      db.from("users").select("membership_type, bungie_membership_id").eq("id", session.user_id).single(),
+      db.from("users").select("membership_type, bungie_membership_id, destiny_membership_id").eq("id", session.user_id).single(),
       db.from("config").select("value").eq("key", "bright_dust_hash").single(),
     ]);
     if (!user) return unauthenticated();
     const brightDustHash = Number((cfg?.value as { hash?: number } | null)?.hash ?? 0);
 
+    const destinyId = (user.destiny_membership_id ?? user.bungie_membership_id) as string;
     const profile = await bungieGet<ProfileCurrencies>(
-      `/Destiny2/${user.membership_type}/Profile/${user.bungie_membership_id}/?components=103`,
+      `/Destiny2/${user.membership_type}/Profile/${destinyId}/?components=103`,
       token
     );
     const items = profile.profileCurrencies?.data?.items ?? [];
