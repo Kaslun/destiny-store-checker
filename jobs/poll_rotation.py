@@ -47,13 +47,23 @@ def main() -> int:
     current_rows = []
     snapshot_rows = []
 
+    print(f"trying {len(vendor_hashes)} resolved Eververse vendor(s): {vendor_hashes}")
+    ok_vendors = 0
     for vendor_hash in vendor_hashes:
         path = (f"/Destiny2/{SERVICE_MEMBERSHIP_TYPE}/Profile/{SERVICE_MEMBERSHIP_ID}"
                 f"/Character/{SERVICE_CHARACTER_ID}/Vendors/{vendor_hash}/?components=400,401,402")
-        resp = api_get(path, token)
+        try:
+            resp = api_get(path, token)
+        except RuntimeError as e:
+            # Not every name-matched vendor is queryable (display/category or
+            # inactive seasonal vendors). Skip and keep going.
+            print(f"  vendor {vendor_hash}: skipped ({e})")
+            continue
         sales = (resp.get("sales") or {}).get("data") or {}
         vendor = (resp.get("vendor") or {}).get("data") or {}
         reset_at = vendor.get("nextRefreshDate")
+        ok_vendors += 1
+        print(f"  vendor {vendor_hash}: {len(sales)} sale items")
 
         for _idx, sale in sales.items():
             item_hash = sale.get("itemHash")
@@ -86,7 +96,11 @@ def main() -> int:
             snapshot_rows, on_conflict="snapshot_date,vendor_hash,item_hash"
         ).execute()
 
-    print(f"polled {len(current_rows)} sale items across {len(vendor_hashes)} vendors")
+    if ok_vendors == 0:
+        print("No Eververse vendor was queryable. The resolved hashes may all be "
+              "non-interactable vendors; widen/repair resolution in manifest_ingest.", file=sys.stderr)
+        return 1
+    print(f"polled {len(current_rows)} sale items across {ok_vendors}/{len(vendor_hashes)} vendors")
     return 0
 
 
