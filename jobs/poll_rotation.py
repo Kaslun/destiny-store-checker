@@ -203,6 +203,21 @@ def main() -> int:
         print("No Eververse vendor was queryable. The resolved hashes may all be "
               "non-interactable vendors; widen/repair resolution in manifest_ingest.", file=sys.stderr)
         return 1
+    # Diagnostic: dump what we captured, grouped by item type, so we can compare
+    # against the in-game store. (Type/name strings aren't masked like numbers.)
+    hashes = [r["item_hash"] for r in current_rows]
+    detail = {}
+    for i in range(0, len(hashes), 200):
+        for r in db.table("catalog_items").select("item_hash,name,item_type").in_(
+                "item_hash", hashes[i:i + 200]).execute().data:
+            detail[int(r["item_hash"])] = r
+    from collections import Counter
+    type_counts = Counter((detail.get(h, {}).get("item_type") or "(no type)") for h in hashes)
+    print("item types in rotation:", dict(type_counts))
+    for h in hashes:
+        d = detail.get(h, {})
+        print(f"  - {d.get('name')} [{d.get('item_type') or '(no type)'}]")
+
     by_cur = {}
     for r in current_rows:
         by_cur[r["currency_type"]] = by_cur.get(r["currency_type"], 0) + 1
