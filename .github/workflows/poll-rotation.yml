@@ -1,0 +1,44 @@
+name: poll-rotation
+on:
+  schedule:
+    # A couple of runs in the post-reset window. Daily ~17:00 UTC; weekly Tue.
+    # Do not poll continuously. Verify exact reset time, don't trust forever.
+    - cron: "5,20 17 * * *"
+    - cron: "5,20 17 * * 2"   # extra weekly-reset coverage (Tuesday)
+  workflow_dispatch: {}
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r jobs/requirements.txt
+      - working-directory: jobs
+        run: python poll_rotation.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUNGIE_API_KEY: ${{ secrets.BUNGIE_API_KEY }}
+          BUNGIE_CLIENT_ID: ${{ secrets.BUNGIE_CLIENT_ID }}
+          BUNGIE_CLIENT_SECRET: ${{ secrets.BUNGIE_CLIENT_SECRET }}
+          TOKEN_ENC_KEY: ${{ secrets.TOKEN_ENC_KEY }}
+          SERVICE_MEMBERSHIP_TYPE: ${{ secrets.SERVICE_MEMBERSHIP_TYPE }}
+          SERVICE_MEMBERSHIP_ID: ${{ secrets.SERVICE_MEMBERSHIP_ID }}
+          SERVICE_CHARACTER_ID: ${{ secrets.SERVICE_CHARACTER_ID }}
+
+  # On success, dispatch notifications. A separate job so a notify failure
+  # doesn't mask a successful poll.
+  notify:
+    needs: poll
+    if: success()
+    uses: ./.github/workflows/notify-dispatch.yml
+    secrets: inherit
+
+  # A failed poll freezes the rotation feed — surface it loudly (doc 05 §4).
+  alert:
+    needs: poll
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::error::poll-rotation failed — rotation feed is frozen. Investigate."

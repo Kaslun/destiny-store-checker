@@ -1,0 +1,35 @@
+{
+  "name": "everywherse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Everywherse — a Destiny 2 Eververse rotation tracker and wishlist.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "check:secrets": "node scripts/check-client-bundle.mjs",
+    "test": "vitest run",
+    "job:notify": "tsx jobs/notify-dispatch.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "jose": "^5.9.6",
+    "next": "15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "resend": "^4.0.1",
+    "web-push": "^3.6.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/web-push": "^3.6.4",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "tsx": "^4.19.2"
+  }
+}
